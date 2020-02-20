@@ -21,14 +21,18 @@ headers = {
     "Client-ID": setting["twitch_client_id"]
 }
 
-# -- Subscriber ---------------------------------------------------------------
 api = responder.API()
+client = discord.Client()
+cur_channel = None
 
+# -- Subscriber ---------------------------------------------------------------
 @api.route("/webhook")
 async def handle_webhooks(req, resp):
+    global cur_channel
     try:
         if req.method == "post":
-            print(req.media())
+            data = await req.media()
+            await cur_channel.send(str(data))
 
         elif req.method == "get":
             resp.text = req.params.get("hub.challenge")
@@ -42,7 +46,6 @@ async def start_discord_bot():
     asyncio.create_task(client.start(setting["discord_token"]))
 
 # -- Discord Bot --------------------------------------------------------------
-client = discord.Client()
 
 @client.event
 async def on_message(message):
@@ -56,12 +59,14 @@ async def on_message(message):
         await do_unsubscribe(message)
 
 async def do_subscribe(message):
+    global cur_channel
+    cur_channel = message.channel
     parsed = message.content.split()
     if len(parsed) != 2:
         await message.channel.send("Format: /add <twitch_username>")
         return
 
-    twitch_name = parsed[0]
+    twitch_name = parsed[-1]
     async with aiohttp.ClientSession() as session:
         async with session.get(
             TWITCH_ID_URL.format(twitch_name),
@@ -79,10 +84,10 @@ async def do_subscribe(message):
     async with aiohttp.ClientSession() as session:
         async with session.post(
             HUB_URL,
-            json.dumps(sub_body),
+            data=json.dumps(sub_body),
             headers=headers
         ) as resp:
-            if resp.status_code == 202:
+            if resp.status == 202:
                 await message.channel.send("Successfully Added!")
 
             else:
