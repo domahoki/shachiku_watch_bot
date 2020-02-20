@@ -1,0 +1,5 @@
+{
+  "webhook_host": "http://your.host:8080/webhook",
+  "discord_token": "YOUR-DISCORD-BOT-TOKEN",
+  "twitch_client_id": "TOUR-TWITCH-CLIENT-ID"
+}
