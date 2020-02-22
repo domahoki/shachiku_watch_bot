@@ -17,8 +17,8 @@ TWITCH_ID_URL = "https://api.twitch.tv/helix/users?login={}"
 # HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
 HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
 HUB_URL = "https://api.twitch.tv/helix/webhooks/hub"
-LEASE_SECONDS = 120
-# LEASE_SECONDS = 864000
+# LEASE_SECONDS = 120
+LEASE_SECONDS = 864000
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
