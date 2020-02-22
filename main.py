@@ -1,4 +1,6 @@
+import sys
 import json
+import logging
 import asyncio
 import argparse
 
@@ -6,10 +8,23 @@ import aiohttp
 import discord
 import responder
 
+from lib.models import init_db
+from lib import operations as opers
 
+
+TWTICH_URL_BASE = "https://www.twitch.tv/{}"
 TWITCH_ID_URL = "https://api.twitch.tv/helix/users?login={}"
-HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
+# HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
+HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
 HUB_URL = "https://api.twitch.tv/helix/webhooks/hub"
+LEASE_SECONDS = 120
+# LEASE_SECONDS = 864000
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(stream=sys.stdout)
+handler.setLevel(logging.INFO)
+logger.addHandler(handler)
 
 
 # -- Settings -----------------------------------------------------------------
@@ -23,19 +38,38 @@ headers = {
 
 api = responder.API()
 client = discord.Client()
-cur_channel = None
 
 # -- Subscriber ---------------------------------------------------------------
-@api.route("/webhook")
-async def handle_webhooks(req, resp):
-    global cur_channel
+@api.route("/webhook/{user_id}")
+async def handle_webhooks(req, resp, *, user_id):
     try:
         if req.method == "post":
+            # get discord channel by twitch user id
             data = await req.media()
-            await cur_channel.send(str(data))
+            channel_id = opers.get_channel_by_user(user_id)
+
+            if channel_id is None:
+                logger.error("Faild to get channel.")
+                return
+
+            channel = client.get_channel(int(channel_id))
+            user = opers.get_user(user_id)
+            if len(data["data"]) == 0:
+                await channel.send(
+                    "{}さんの配信が終わったよ.\n{}".format(
+                        user.user_name, TWTICH_URL_BASE.format(user.user_name)))
+
+            else:
+                await channel.send(
+                    "{}さんの配信が始まったよ.\n{}".format(
+                        user.user_name, TWTICH_URL_BASE.format(user.user_name)))
 
         elif req.method == "get":
-            resp.text = req.params.get("hub.challenge")
+            challenge = req.params.get("hub.challenge")
+            resp.text = challenge
+
+        else:
+            resp.text = "Not implemented method."
 
     except Exception as ex:
         resp.text = str(ex)
@@ -55,12 +89,16 @@ async def on_message(message):
     if message.content.startswith("/add"):
         await do_subscribe(message)
 
+    if message.content.startswith("/list_users"):
+        await get_user_list(message)
+
     if message.content.startswith("/remove"):
         await do_unsubscribe(message)
 
+    if message.content.startswith("/set_channel"):
+        await set_channel(message)
+
 async def do_subscribe(message):
-    global cur_channel
-    cur_channel = message.channel
     parsed = message.content.split()
     if len(parsed) != 2:
         await message.channel.send("Format: /add <twitch_username>")
@@ -73,13 +111,17 @@ async def do_subscribe(message):
             headers=headers
         ) as resp:
             json_body = await resp.json()
+            if len(json_body["data"]) == 0:
+                await message.channel.send("No such user: {}".format(twitch_name))
+                return
+
             user_id = json_body["data"][0]["id"]
 
     sub_body = {
-        "hub.callback": setting["webhook_host"],
+        "hub.callback": setting["webhook_host"] + user_id,
         "hub.mode": "subscribe",
         "hub.topic": HUB_TOPIC_URL.format(user_id),
-        "hub.lease_seconds": 60,
+        "hub.lease_seconds": LEASE_SECONDS,
     }
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -88,23 +130,104 @@ async def do_subscribe(message):
             headers=headers
         ) as resp:
             if resp.status == 202:
+                result = opers.add_user(
+                    user_id=int(user_id),
+                    user_name=twitch_name,
+                    guild_id=message.channel.guild.id,
+                    sub_body=sub_body,
+                )
+
+            else:
+                result = False
+
+            if result:
                 await message.channel.send("Successfully Added!")
 
             else:
                 await message.channel.send(
-                    "Add Error With Response: {}".format(resp.status_code))
+                    "Add Error With Response: {}".format(resp.status))
 
 async def do_unsubscribe(message):
-    pass
+    parsed = message.content.split()
+    if len(parsed) != 2:
+        await message.channel.send("Format: /remove <twitch_username>")
+        return
+
+    twitch_name = parsed[-1]
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            TWITCH_ID_URL.format(twitch_name),
+            headers=headers
+        ) as resp:
+            json_body = await resp.json()
+            user_id = json_body["data"][0]["id"]
+
+    sub_body = {
+        "hub.callback": setting["webhook_host"] + user_id,
+        "hub.mode": "unsubscribe",
+        "hub.topic": HUB_TOPIC_URL.format(user_id),
+        "hub.lease_seconds": LEASE_SECONDS,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            HUB_URL,
+            data=json.dumps(sub_body),
+            headers=headers
+        ) as resp:
+            if resp.status == 202:
+                result = opers.remove_user(
+                    user_id=int(user_id),
+                )
+
+            else:
+                result = False
+
+            if result:
+                await message.channel.send("Successfully Removed!")
+
+            else:
+                await message.channel.send(
+                    "Remove Error With Response: {}".format(resp.status))
+
+async def get_user_list(message):
+    guild_id = message.guild.id
+    users = opers.list_users(guild_id)
+
+    if users is None:
+        await message.channel.send("Get user list error.")
+
+    elif len(users) == 0:
+        await message.channel.send("No users are registered.")
+
+    else:
+        users_str = [str(u) for u in users]
+        await message.channel.send("\n".join(users_str))
+
+async def set_channel(message):
+    result = opers.register_channel(
+        message.guild.id,
+        message.channel.id,
+    )
+    if result is True:
+        await message.channel.send("Successfully set channel: {}".format(
+            message.channel.name))
+
+    else:
+        await message.channel.send("Faild to set channel.")
 
 # -- main ---------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = parser = argparse.ArgumentParser()
     parser.add_argument("--setting", "-s", type=str, default="settings.json")
+    parser.add_argument("--port", "-p", type=int, default=8080)
+    parser.add_argument("--host", type=str, default="0.0.0.0")
     args = parser.parse_args()
+
+    # Initialize DB
+    init_db()
 
     with open(args.setting, "r", encoding="utf-8") as fp:
         setting = json.load(fp)
 
-    api.run(address="0.0.0.0", port=8080)
+    api.run(address=args.host, port=args.port)
