@@ -14,10 +14,9 @@ from lib import operations as opers
 
 TWTICH_URL_BASE = "https://www.twitch.tv/{}"
 TWITCH_ID_URL = "https://api.twitch.tv/helix/users?login={}"
-# HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
-HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
+# HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
+HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
 HUB_URL = "https://api.twitch.tv/helix/webhooks/hub"
-# LEASE_SECONDS = 120
 LEASE_SECONDS = 864000
 
 logger = logging.getLogger()
@@ -46,23 +45,27 @@ async def handle_webhooks(req, resp, *, user_id):
         if req.method == "post":
             # get discord channel by twitch user id
             data = await req.media()
-            channel_id = opers.get_channel_by_user(user_id)
+            users = opers.get_users(user_id)
+            guilds = [client.get_guild(int(user.guild_id)) for user in users]
 
-            if channel_id is None:
-                logger.error("Faild to get channel.")
-                return
+            # post on all guilds
+            for guild, user in zip(guilds, users):
+                channel = opers.get_channel(guild.id)
 
-            channel = client.get_channel(int(channel_id))
-            user = opers.get_user(user_id)
-            if len(data["data"]) == 0:
-                await channel.send(
-                    "{}さんの配信が終わったよ.\n{}".format(
-                        user.user_name, TWTICH_URL_BASE.format(user.user_name)))
+                if channel is None:
+                    logger.error("Faild to get channel.")
+                    return
 
-            else:
-                await channel.send(
-                    "{}さんの配信が始まったよ.\n{}".format(
-                        user.user_name, TWTICH_URL_BASE.format(user.user_name)))
+                channel = client.get_channel(int(channel.channel_id))
+                if len(data["data"]) == 0:
+                    await channel.send(
+                        "{}さんの配信が終わったよ.\n{}".format(
+                            user.user_name, TWTICH_URL_BASE.format(user.user_name)))
+
+                else:
+                    await channel.send(
+                        "{}さんの配信が始まったよ.\n{}".format(
+                            user.user_name, TWTICH_URL_BASE.format(user.user_name)))
 
         elif req.method == "get":
             challenge = req.params.get("hub.challenge")
@@ -160,34 +163,31 @@ async def do_unsubscribe(message):
             headers=headers
         ) as resp:
             json_body = await resp.json()
+            if len(json_body["data"]) == 0:
+                await message.channel.send("No such user: {}".format(twitch_name))
+                return
+
             user_id = json_body["data"][0]["id"]
 
-    sub_body = {
-        "hub.callback": setting["webhook_host"] + user_id,
-        "hub.mode": "unsubscribe",
-        "hub.topic": HUB_TOPIC_URL.format(user_id),
-        "hub.lease_seconds": LEASE_SECONDS,
-    }
+    sub_info = opers.remove_user(
+        user_id=int(user_id),
+        guild_id=message.guild.id,
+    )
     async with aiohttp.ClientSession() as session:
         async with session.post(
             HUB_URL,
-            data=json.dumps(sub_body),
+            data=json.dumps(sub_info.get_unsub_body()),
             headers=headers
         ) as resp:
             if resp.status == 202:
-                result = opers.remove_user(
-                    user_id=int(user_id),
-                )
-
-            else:
-                result = False
-
-            if result:
                 await message.channel.send("Successfully Removed!")
 
             else:
                 await message.channel.send(
                     "Remove Error With Response: {}".format(resp.status))
+                return
+
+    return
 
 async def get_user_list(message):
     guild_id = message.guild.id

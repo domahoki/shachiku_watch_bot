@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 class Users(db.Base):
     __tablename__ = "users"
 
-    user_id = Column("user_id", String(256), primary_key=True)
+    id = Column("id", INTEGER(unsigned=True), primary_key=True, auto_increment=True)
+    user_id = Column("user_id", String(256))
     user_name = Column("user_name", String(256))
     update_date = Column(
         "update_date",
@@ -60,8 +61,8 @@ class Channels(db.Base):
     guild_id = Column(
         "guild_id",
         String(256),
-        primary_key=True,
         unique=True,
+        primary_key=True,
     )
 
     def __init__(
@@ -88,7 +89,8 @@ def init_db(force=False):
 class SubInfo(db.Base):
     __tablename__ = "sub_info"
 
-    user_id = Column("user_id", String(256), primary_key=True)
+    id = Column("id", INTEGER(unsigned=True), primary_key=True, auto_increment=True)
+    user_id = Column("user_id", String(256))
     callback = Column("callback", String(512))
     topic = Column("topic", String(512))
     lease_seconds = Column("lease_seconds", INTEGER(unsigned=True))
@@ -115,7 +117,7 @@ class SubInfo(db.Base):
         self.date = date
 
     def __str__(self):
-        expired_date = self.update_date + dt.timedelta(seconds=self.lease_seconds)
+        expired_date = self.get_expired_date()
 
         return "User: {}, CallbackURL: {}, Topic: {}, Updated at {}, Expired at {}".format(
             self.user_id,
@@ -125,4 +127,13 @@ class SubInfo(db.Base):
             expired_date.strftime("%Y/%m/%d %H:%M:%S")
         )
 
+    def get_expired_date(self):
+        return self.update_date + dt.timedelta(seconds=self.lease_seconds)
 
+    def get_unsub_body(self):
+        return {
+            "hub.callback": self.callback,
+            "hub.mode": "unsubscribe",
+            "hub.topic": self.topic,
+            "hub.lease_seconds": self.lease_seconds,
+        }

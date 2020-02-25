@@ -1,5 +1,6 @@
 import logging
 import datetime as dt
+from typing import List
 
 from .db import session
 from .models import Users, Channels, SubInfo
@@ -12,7 +13,7 @@ def add_user(
     user_name,
     guild_id,
     sub_body,
-):
+) -> bool:
     try:
         query = session.query(Users).filter(Users.user_id == user_id)
         if query.count() == 0:
@@ -33,7 +34,7 @@ def add_user(
 
         else:
             user = query.first()
-            sub_info = session.query(SubInfo).filter(SubInfo.user_id == user_id).first()
+            sub_info = session.query(SubInfo).filter(SubInfo.id == user.id).first()
             sub_info.callback = sub_body["hub.callback"]
             sub_info.topic = sub_body["hub.topic"]
             sub_info.lease_seconds = sub_body["hub.lease_seconds"]
@@ -50,27 +51,30 @@ def add_user(
 
     return True
 
-def remove_user(user_id):
+def remove_user(user_id, guild_id) -> SubInfo:
     try:
-        query = session.query(Users).filter(Users.user_id == user_id)
+        query = session.query(Users).filter(
+            Users.user_id == user_id and Users.guild_id == guild_id)
         if query.count() == 0:
             logger.error("No such user registered.")
-            return False
+            return None
 
         else:
             user = query.first()
+            sub_info = session.query(SubInfo).filter(SubInfo.id == user.id).first()
             session.delete(user)
+            session.delete(sub_info)
 
             session.commit()
 
     except Exception as ex:
         logger.exception(ex)
-        return False
+        return None
 
     finally:
         session.close()
 
-    return True
+    return sub_info
 
 def list_users(guild_id):
     all_users = None
@@ -85,15 +89,15 @@ def list_users(guild_id):
 
     return all_users
 
-def get_user(user_id):
-    user = None
+def get_users(user_id) -> List[Users]:
+    users = None
     try:
         query = session.query(Users).filter(Users.user_id == user_id)
         if query.count() == 0:
             logger.error("No such user: {}".format(user_id))
 
         else:
-            user = query.first()
+            users = query.all()
 
     except Exception as ex:
         logger.exception(ex)
@@ -101,7 +105,20 @@ def get_user(user_id):
     finally:
         session.close()
 
-    return user
+    return users
+
+def list_subinfo() -> SubInfo:
+    sub_info_list = None
+    try:
+        sub_info_list = session.query(SubInfo).all()
+
+    except Exception as ex:
+        logger.exception(ex)
+
+    finally:
+        session.close()
+
+    return sub_info_list
 
 def register_channel(
     guild_id,
@@ -147,10 +164,31 @@ def list_channels():
 
     return all_channels
 
-def get_channel_by_user(user_id):
+def get_channel(guild_id) -> Channels:
+    channel = None
+    try:
+        query = session.query(Channels).filter(
+            Channels.guild_id == guild_id)
+        if query.count() == 0:
+            logger.error("No such channel: {}".format(guild_id))
+
+            return channel
+
+        channel = query.first()
+
+    except Exception as ex:
+        logger.exception(ex)
+
+    finally:
+        session.close()
+
+    return channel
+
+def get_channel_by_user(user_id, guild_id) -> str:
     channel_id = None
     try:
-        query = session.query(Users).filter(Users.user_id == user_id)
+        query = session.query(Users).filter(
+            Users.user_id == user_id and Users.guild_id == guild_id)
         if query.count() == 0:
             logger.error("No such user: {}".format(user_id))
 
