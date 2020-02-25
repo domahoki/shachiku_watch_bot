@@ -123,17 +123,25 @@ class SubInfo(db.Base):
             self.user_id,
             self.callback,
             self.topic,
-            self.update_date.strftime("%Y/%m/%d %H:%M:%S"),
+            self.date.strftime("%Y/%m/%d %H:%M:%S"),
             expired_date.strftime("%Y/%m/%d %H:%M:%S")
         )
 
     def get_expired_date(self):
-        return self.update_date + dt.timedelta(seconds=self.lease_seconds)
+        return self.date + dt.timedelta(seconds=self.lease_seconds)
 
     def get_unsub_body(self):
         return {
             "hub.callback": self.callback,
             "hub.mode": "unsubscribe",
+            "hub.topic": self.topic,
+            "hub.lease_seconds": self.lease_seconds,
+        }
+
+    def get_sub_body(self):
+        return {
+            "hub.callback": self.callback,
+            "hub.mode": "subscribe",
             "hub.topic": self.topic,
             "hub.lease_seconds": self.lease_seconds,
         }

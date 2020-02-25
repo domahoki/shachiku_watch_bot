@@ -107,7 +107,7 @@ def get_users(user_id) -> List[Users]:
 
     return users
 
-def list_subinfo() -> SubInfo:
+def list_subinfo() -> List[SubInfo]:
     sub_info_list = None
     try:
         sub_info_list = session.query(SubInfo).all()
@@ -119,6 +119,28 @@ def list_subinfo() -> SubInfo:
         session.close()
 
     return sub_info_list
+
+def update_subinfo(sub_info_id: int) -> bool:
+    try:
+        query = session.query(SubInfo).filter(SubInfo.id == sub_info_id)
+        if query.count() == 0:
+            logger.error("No such sub-info: {}".format(sub_info_id))
+            return False
+
+        else:
+            sub_info = query.first()
+            sub_info.date = dt.datetime.now()
+            session.commit()
+
+    except Exception as ex:
+        logger.exception(ex)
+
+        return False
+
+    finally:
+        session.close()
+
+    return True
 
 def register_channel(
     guild_id,

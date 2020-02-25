@@ -7,17 +7,21 @@ import argparse
 import aiohttp
 import discord
 import responder
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from lib.models import init_db
+from lib.setting import Setting
+from lib.scheduler import update_job
 from lib import operations as opers
 
 
 TWTICH_URL_BASE = "https://www.twitch.tv/{}"
 TWITCH_ID_URL = "https://api.twitch.tv/helix/users?login={}"
-# HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
-HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
+HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
+# HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
 HUB_URL = "https://api.twitch.tv/helix/webhooks/hub"
 LEASE_SECONDS = 864000
+UPDATE_TICKS = 60 # minutes
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -27,14 +31,6 @@ logger.addHandler(handler)
 
 
 # -- Settings -----------------------------------------------------------------
-with open("./settings.json", "r", encoding="utf-8") as fp:
-    setting = json.load(fp)
-
-headers = {
-    "Content-Type": "application/json",
-    "Client-ID": setting["twitch_client_id"]
-}
-
 api = responder.API()
 client = discord.Client()
 
@@ -79,8 +75,15 @@ async def handle_webhooks(req, resp, *, user_id):
 
 @api.on_event("startup")
 async def start_discord_bot():
-    client.loop = asyncio.get_running_loop()
-    asyncio.create_task(client.start(setting["discord_token"]))
+    # Startup discord bot in running loop
+    loop = asyncio.get_running_loop()
+    client.loop = loop
+    asyncio.create_task(client.start(Setting.setting["discord_token"]))
+
+    # Startup background update job
+    scheduler = AsyncIOScheduler(event_loop=loop)
+    scheduler.add_job(update_job, "interval", minutes=UPDATE_TICKS)
+    scheduler.start()
 
 # -- Discord Bot --------------------------------------------------------------
 
@@ -111,7 +114,7 @@ async def do_subscribe(message):
     async with aiohttp.ClientSession() as session:
         async with session.get(
             TWITCH_ID_URL.format(twitch_name),
-            headers=headers
+            headers=Setting.get_headers()
         ) as resp:
             json_body = await resp.json()
             if len(json_body["data"]) == 0:
@@ -121,7 +124,7 @@ async def do_subscribe(message):
             user_id = json_body["data"][0]["id"]
 
     sub_body = {
-        "hub.callback": setting["webhook_host"] + user_id,
+        "hub.callback": Setting.setting["webhook_host"] + user_id,
         "hub.mode": "subscribe",
         "hub.topic": HUB_TOPIC_URL.format(user_id),
         "hub.lease_seconds": LEASE_SECONDS,
@@ -130,7 +133,7 @@ async def do_subscribe(message):
         async with session.post(
             HUB_URL,
             data=json.dumps(sub_body),
-            headers=headers
+            headers=Setting.get_headers()
         ) as resp:
             if resp.status == 202:
                 result = opers.add_user(
@@ -160,7 +163,7 @@ async def do_unsubscribe(message):
     async with aiohttp.ClientSession() as session:
         async with session.get(
             TWITCH_ID_URL.format(twitch_name),
-            headers=headers
+            headers=Setting.get_headers()
         ) as resp:
             json_body = await resp.json()
             if len(json_body["data"]) == 0:
@@ -177,7 +180,7 @@ async def do_unsubscribe(message):
         async with session.post(
             HUB_URL,
             data=json.dumps(sub_info.get_unsub_body()),
-            headers=headers
+            headers=Setting.get_headers()
         ) as resp:
             if resp.status == 202:
                 await message.channel.send("Successfully Removed!")
@@ -227,7 +230,8 @@ if __name__ == "__main__":
     # Initialize DB
     init_db()
 
-    with open(args.setting, "r", encoding="utf-8") as fp:
-        setting = json.load(fp)
+    # load params
+    Setting.load_setting(args.setting)
 
+    # run server
     api.run(address=args.host, port=args.port)
