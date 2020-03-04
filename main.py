@@ -13,9 +13,10 @@ from lib.models import init_db
 from lib.setting import Setting
 from lib.scheduler import update_job
 from lib import operations as opers
+from lib import embed
+from lib import db
 
 
-TWTICH_URL_BASE = "https://www.twitch.tv/{}"
 TWITCH_ID_URL = "https://api.twitch.tv/helix/users?login={}"
 HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
 # HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
@@ -27,41 +28,37 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stdout)
 handler.setLevel(logging.INFO)
+# fhandler = logging.FileHandler("./log", encoding="utf-8", mode="a")
+# fhandler.setLevel(logging.INFO)
 logger.addHandler(handler)
-
+# logger.addHandler(fhandler)
 
 # -- Settings -----------------------------------------------------------------
 api = responder.API()
 client = discord.Client()
+setting = Setting.get_instance()
 
 # -- Subscriber ---------------------------------------------------------------
 @api.route("/webhook/{user_id}")
-async def handle_webhooks(req, resp, *, user_id):
+async def handle_webhooks(req, resp, *, user_id, session=db.session):
     try:
         if req.method == "post":
             # get discord channel by twitch user id
             data = await req.media()
-            users = opers.get_users(user_id)
+            users = opers.get_users(user_id, session=session)
             guilds = [client.get_guild(int(user.guild_id)) for user in users]
 
             # post on all guilds
             for guild, user in zip(guilds, users):
-                channel = opers.get_channel(guild.id)
+                channel = opers.get_channel(guild.id, session=session)
 
                 if channel is None:
                     logger.error("Faild to get channel.")
                     return
 
                 channel = client.get_channel(int(channel.channel_id))
-                if len(data["data"]) == 0:
-                    await channel.send(
-                        "{}さんの配信が終わったよ.\n{}".format(
-                            user.user_name, TWTICH_URL_BASE.format(user.user_name)))
-
-                else:
-                    await channel.send(
-                        "{}さんの配信が始まったよ.\n{}".format(
-                            user.user_name, TWTICH_URL_BASE.format(user.user_name)))
+                content, embed_obj = await embed.get_message(user.user_name, data)
+                await channel.send(content=content, embed=embed_obj)
 
         elif req.method == "get":
             challenge = req.params.get("hub.challenge")
@@ -72,13 +69,14 @@ async def handle_webhooks(req, resp, *, user_id):
 
     except Exception as ex:
         resp.text = str(ex)
+        raise ex
 
 @api.on_event("startup")
 async def start_discord_bot():
     # Startup discord bot in running loop
     loop = asyncio.get_running_loop()
     client.loop = loop
-    asyncio.create_task(client.start(Setting.setting["discord_token"]))
+    asyncio.create_task(client.start(setting["discord_token"]))
 
     # Startup background update job
     scheduler = AsyncIOScheduler(event_loop=loop)
@@ -114,7 +112,7 @@ async def do_subscribe(message):
     async with aiohttp.ClientSession() as session:
         async with session.get(
             TWITCH_ID_URL.format(twitch_name),
-            headers=Setting.get_headers()
+            headers=setting.get_headers()
         ) as resp:
             json_body = await resp.json()
             if len(json_body["data"]) == 0:
@@ -124,7 +122,7 @@ async def do_subscribe(message):
             user_id = json_body["data"][0]["id"]
 
     sub_body = {
-        "hub.callback": Setting.setting["webhook_host"] + user_id,
+        "hub.callback": setting["webhook_host"] + user_id,
         "hub.mode": "subscribe",
         "hub.topic": HUB_TOPIC_URL.format(user_id),
         "hub.lease_seconds": LEASE_SECONDS,
@@ -133,7 +131,7 @@ async def do_subscribe(message):
         async with session.post(
             HUB_URL,
             data=json.dumps(sub_body),
-            headers=Setting.get_headers()
+            headers=setting.get_headers()
         ) as resp:
             if resp.status == 202:
                 result = opers.add_user(
@@ -163,7 +161,7 @@ async def do_unsubscribe(message):
     async with aiohttp.ClientSession() as session:
         async with session.get(
             TWITCH_ID_URL.format(twitch_name),
-            headers=Setting.get_headers()
+            headers=setting.get_headers()
         ) as resp:
             json_body = await resp.json()
             if len(json_body["data"]) == 0:
@@ -180,7 +178,7 @@ async def do_unsubscribe(message):
         async with session.post(
             HUB_URL,
             data=json.dumps(sub_info.get_unsub_body()),
-            headers=Setting.get_headers()
+            headers=setting.get_headers()
         ) as resp:
             if resp.status == 202:
                 await message.channel.send("Successfully Removed!")
@@ -231,7 +229,7 @@ if __name__ == "__main__":
     init_db()
 
     # load params
-    Setting.load_setting(args.setting)
+    setting.load_setting(args.setting)
 
     # run server
     api.run(address=args.host, port=args.port)

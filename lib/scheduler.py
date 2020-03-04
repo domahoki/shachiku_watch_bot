@@ -27,8 +27,9 @@ async def update_job():
         logger.info("No need to update.")
 
 async def update_sub(sub_info: SubInfo):
+    setting = Setting.get_instance()
     sub_body = sub_info.get_sub_body()
-    headers = Setting.get_headers()
+    headers = setting.get_headers()
     async with aiohttp.ClientSession() as session:
         async with session.post(
             HUB_URL,

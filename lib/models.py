@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class Users(db.Base):
     __tablename__ = "users"
 
-    id = Column("id", INTEGER(unsigned=True), primary_key=True, auto_increment=True)
+    id = Column("id", INTEGER(unsigned=True), primary_key=True, autoincrement=True)
     user_id = Column("user_id", String(256))
     user_name = Column("user_name", String(256))
     update_date = Column(
@@ -89,7 +89,7 @@ def init_db(force=False):
 class SubInfo(db.Base):
     __tablename__ = "sub_info"
 
-    id = Column("id", INTEGER(unsigned=True), primary_key=True, auto_increment=True)
+    id = Column("id", INTEGER(unsigned=True), primary_key=True, autoincrement=True)
     user_id = Column("user_id", String(256))
     callback = Column("callback", String(512))
     topic = Column("topic", String(512))
