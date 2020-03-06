@@ -19,7 +19,6 @@ from lib import db
 
 TWITCH_ID_URL = "https://api.twitch.tv/helix/users?login={}"
 HUB_TOPIC_URL = "https://api.twitch.tv/helix/streams?user_id={}"
-# HUB_TOPIC_URL = "https://api.twitch.tv/helix/users?id={}"
 HUB_URL = "https://api.twitch.tv/helix/webhooks/hub"
 LEASE_SECONDS = 864000
 UPDATE_TICKS = 60 # minutes
@@ -28,10 +27,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stdout)
 handler.setLevel(logging.INFO)
-# fhandler = logging.FileHandler("./log", encoding="utf-8", mode="a")
-# fhandler.setLevel(logging.INFO)
+fhandler = logging.FileHandler("./log", encoding="utf-8", mode="a")
+fhandler.setLevel(logging.INFO)
 logger.addHandler(handler)
-# logger.addHandler(fhandler)
+logger.addHandler(fhandler)
 
 # -- Settings -----------------------------------------------------------------
 api = responder.API()
@@ -103,7 +102,7 @@ async def on_message(message):
         await set_channel(message)
 
 async def do_subscribe(message):
-    parsed = message.content.split()
+    parsed = message.content.strip().split()
     if len(parsed) != 2:
         await message.channel.send("Format: /add <twitch_username>")
         return
@@ -152,7 +151,7 @@ async def do_subscribe(message):
                     "Add Error With Response: {}".format(resp.status))
 
 async def do_unsubscribe(message):
-    parsed = message.content.split()
+    parsed = message.content.strip().split()
     if len(parsed) != 2:
         await message.channel.send("Format: /remove <twitch_username>")
         return

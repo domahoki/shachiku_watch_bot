@@ -2,7 +2,9 @@ import copy
 import asyncio
 import aiohttp
 import logging
+import datetime as dt
 
+import dateutil.parser
 from discord import Embed
 
 from .setting import Setting
@@ -72,6 +74,11 @@ async def get_message(user_name: str, recieved_data: dict):
 
     return content, embed
 
+def parse_iso(iso_str):
+    utc = dateutil.parser.parse(iso_str)
+
+    return utc
+
 async def get_embed(user_name: str, received_data: dict):
     if len(received_data["data"]) == 0:
         logger.error("Received Response is Error.")
@@ -80,9 +87,11 @@ async def get_embed(user_name: str, received_data: dict):
     stream_info = received_data["data"][0]
     embed_dict = copy.deepcopy(TEMPLATE)
     user_thumbnail = await get_user_thumbnail(user_name)
+    timestamp = parse_iso(stream_info["started_at"])
+
     embed_dict["title"] = stream_info["title"]
     embed_dict["url"] = TWTICH_URL_BASE.format(user_name)
-    embed_dict["timestamp"] = stream_info["started_at"]
+    embed_dict["timestamp"] = dt.datetime.isoformat(timestamp)
     embed_dict["thumbnail"]["url"] = user_thumbnail
     embed_dict["image"]["url"] = stream_info["thumbnail_url"]
     embed_dict["author"]["name"] = user_name
