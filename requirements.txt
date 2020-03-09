@@ -33,6 +33,7 @@ multidict==4.7.4
 packaging==20.1
 pluggy==0.13.1
 promise==2.3
+psycopg2-binary==2.8.4
 py==1.8.1
 pycodestyle==2.5.0
 pylint==2.4.4
