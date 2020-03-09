@@ -1,3 +1,4 @@
+import os
 import json
 from threading import Lock
 
@@ -25,8 +26,14 @@ class Setting(object):
         return cls._unique_instance
 
     def load_setting(self, path) -> None:
-        with open(path, "r", encoding="utf-8") as fp:
-            self.__setting = json.load(fp)
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as fp:
+                self.__setting = json.load(fp)
+
+        else:
+            self.__setting["webhook_host"] = os.environ["WEBHOOK_HOST"]
+            self.__setting["discord_token"] = os.environ["DISCORD_TOKEN"]
+            self.__setting["twitch_client_id"] = os.environ["TWITCH_CLIENT_ID"]
 
     def get_headers(self) -> None:
         return {
