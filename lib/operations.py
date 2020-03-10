@@ -140,7 +140,7 @@ def list_users(
     """
     all_users = None
     try:
-        all_users = session.query(Users).filter(Users.guild_id == guild_id).all()
+        all_users = session.query(Users).filter(Users.guild_id == str(guild_id)).all()
 
     except Exception as ex:
         logger.exception(ex)
@@ -153,7 +153,7 @@ def list_users(
 def get_users(user_id, session=db.session) -> List[Users]:
     users = None
     try:
-        query = session.query(Users).filter(Users.user_id == user_id)
+        query = session.query(Users).filter(Users.user_id == str(user_id))
         if query.count() == 0:
             logger.error("No such user: {}".format(user_id))
 
@@ -252,7 +252,7 @@ def get_channel(guild_id, session=db.session) -> Channels:
     channel = None
     try:
         query = session.query(Channels).filter(
-            Channels.guild_id == guild_id)
+            Channels.guild_id == str(guild_id))
         if query.count() == 0:
             logger.error("No such channel: {}".format(guild_id))
 
@@ -272,7 +272,7 @@ def get_channel_by_user(user_id, guild_id, session=db.session) -> str:
     channel_id = None
     try:
         query = session.query(Users).filter(
-            Users.user_id == user_id, Users.guild_id == guild_id)
+            Users.user_id == str(user_id), Users.guild_id == str(guild_id))
         if query.count() == 0:
             logger.error("No such user: {}".format(user_id))
 
