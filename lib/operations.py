@@ -11,7 +11,7 @@ from .models import Users, Channels, SubInfo
 logger = logging.getLogger(__name__)
 
 def add_user(
-    user_id: int,
+    user_id: str,
     user_name: str,
     guild_id: str,
     sub_body: Dict[str, str],
@@ -37,7 +37,7 @@ def add_user(
     """
     try:
         query = session.query(Users).filter(
-            Users.user_id == user_id, Users.guild_id == guild_id)
+            Users.user_id == str(user_id), Users.guild_id == str(guild_id))
         if query.count() == 0:
             user = Users(
                 user_id=user_id,
@@ -80,7 +80,7 @@ def add_user(
     return True
 
 def remove_user(
-    user_id: int,
+    user_id: str,
     guild_id: str,
     session: sqlalchemy.orm.session.Session = db.session,
 ) -> SubInfo:
@@ -100,7 +100,7 @@ def remove_user(
     """
     try:
         query = session.query(Users).filter(
-            Users.user_id == user_id, Users.guild_id == guild_id)
+            Users.user_id == str(user_id), Users.guild_id == str(guild_id))
         if query.count() == 0:
             logger.error("No such user registered.")
             return None
@@ -209,7 +209,7 @@ def register_channel(
     session=db.session,
 ):
     try:
-        query = session.query(Channels).filter(Channels.guild_id == guild_id)
+        query = session.query(Channels).filter(Channels.guild_id == str(guild_id))
         if query.count() == 0:
             channel = Channels(
                 guild_id=guild_id,

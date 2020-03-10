@@ -44,7 +44,7 @@ async def handle_webhooks(req, resp, *, user_id, session=db.session):
         if req.method == "post":
             # get discord channel by twitch user id
             data = await req.media()
-            users = opers.get_users(user_id, session=session)
+            users = opers.get_users(str(user_id), session=session)
             guilds = [client.get_guild(int(user.guild_id)) for user in users]
 
             # post on all guilds
@@ -134,7 +134,7 @@ async def do_subscribe(message):
         ) as resp:
             if resp.status == 202:
                 result = opers.add_user(
-                    user_id=int(user_id),
+                    user_id=user_id,
                     user_name=twitch_name,
                     guild_id=message.channel.guild.id,
                     sub_body=sub_body,
@@ -170,7 +170,7 @@ async def do_unsubscribe(message):
             user_id = json_body["data"][0]["id"]
 
     sub_info = opers.remove_user(
-        user_id=int(user_id),
+        user_id=str(user_id),
         guild_id=message.guild.id,
     )
     async with aiohttp.ClientSession() as session:

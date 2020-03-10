@@ -30,11 +30,18 @@ logger.addHandler(handler)
 @pytest.fixture
 def test_db():
     # OnMemory DB for test
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    engine = create_engine("postgresql://postgres:postgres@127.0.0.1:5432/test_shachiku", echo=False)
     Session = scoped_session(sessionmaker(bind=engine))
     db.Base.metadata.create_all(engine)
 
-    return Session()
+    session = Session()
+
+    session.query(Users).delete()
+    session.query(Channels).delete()
+    session.query(SubInfo).delete()
+    session.commit()
+
+    return session
 
 def is_matched_user(
     user: Users,
